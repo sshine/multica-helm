@@ -1,0 +1,13 @@
+{{- if and .Values.ingress.enabled .Values.httpRoute.enabled -}}
+{{- fail "only one of ingress.enabled and httpRoute.enabled can be true" -}}
+{{- end -}}
+
+{{- if and .Values.secret.create (not .Values.config.databaseUrl) -}}
+{{- fail "config.databaseUrl is required (PostgreSQL connection string)" -}}
+{{- end -}}
+
+{{- if eq .Values.config.jwtSecret "change-me-in-production" -}}
+{{- if eq .Values.config.appEnv "production" -}}
+{{- fail "config.jwtSecret must be changed from the default for production deployments" -}}
+{{- end -}}
+{{- end -}}

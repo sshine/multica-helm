@@ -1,0 +1,4 @@
+{{- range $manifest := .Values.extraManifests }}
+---
+{{ $manifest | toYaml }}
+{{- end }}

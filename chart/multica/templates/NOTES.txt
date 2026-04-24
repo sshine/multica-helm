@@ -1,0 +1,29 @@
+Multica has been deployed!
+
+Components:
+  - Backend:  {{ include "multica.backend.serviceName" . }}:{{ .Values.backend.service.port }}
+  - Frontend: {{ include "multica.frontend.serviceName" . }}:{{ .Values.frontend.service.port }}
+
+{{- if .Values.ingress.enabled }}
+
+Access the application via Ingress:
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else if .Values.httpRoute.enabled }}
+
+Access the application via Gateway API HTTPRoute.
+{{- else }}
+
+To access the frontend locally:
+  kubectl port-forward svc/{{ include "multica.frontend.serviceName" . }} 3000:{{ .Values.frontend.service.port }} -n {{ .Release.Namespace }}
+  Then open http://localhost:3000
+{{- end }}
+
+NOTE: The published frontend image proxies API calls server-side to
+http://backend:8080. The backend Service is named "{{ include "multica.backend.serviceName" . }}"
+to match this expectation. If you change backend.service.nameOverride, you
+must also rebuild the frontend image with a matching REMOTE_API_URL.
+
+Multica CLI daemon (runs on developer machines):
+  multica daemon --server ws://{{ include "multica.backend.serviceName" . }}:{{ .Values.backend.service.port }}/ws

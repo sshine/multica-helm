@@ -1,0 +1,334 @@
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# ---------------------------------------------------------------------------
+# Backend — Go API server + WebSocket hub
+# Image: ghcr.io/multica-ai/multica-backend
+# The entrypoint runs migrations automatically, then starts the server.
+# ---------------------------------------------------------------------------
+backend:
+  replicaCount: 1
+
+  image:
+    repository: ghcr.io/multica-ai/multica-backend
+    pullPolicy: IfNotPresent
+    # Overrides the image tag. Defaults to the chart's appVersion when unset.
+    tag: ""
+
+  service:
+    type: ClusterIP
+    port: 8080
+    # The published frontend image proxies API calls to http://backend:8080.
+    # Change this only if you rebuild the frontend image with a custom REMOTE_API_URL.
+    nameOverride: ""
+    annotations: {}
+
+  podAnnotations: {}
+  podLabels: {}
+
+  podSecurityContext: {}
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  # Extra environment variables for the backend container.
+  extraEnv: []
+  extraEnvFrom: []
+
+# ---------------------------------------------------------------------------
+# Frontend — Next.js standalone web UI
+# Image: ghcr.io/multica-ai/multica-web
+# The published image proxies API calls to http://backend:8080 (build-time).
+# ---------------------------------------------------------------------------
+frontend:
+  replicaCount: 1
+
+  image:
+    repository: ghcr.io/multica-ai/multica-web
+    pullPolicy: IfNotPresent
+    # Overrides the image tag. Defaults to the chart's appVersion when unset.
+    tag: ""
+
+  service:
+    type: ClusterIP
+    port: 3000
+    annotations: {}
+
+  podAnnotations: {}
+  podLabels: {}
+
+  podSecurityContext: {}
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  # Extra environment variables for the frontend container.
+  extraEnv: []
+  extraEnvFrom: []
+
+imagePullSecrets: []
+
+# ---------------------------------------------------------------------------
+# Application configuration
+# All values are passed as environment variables to the backend.
+# ---------------------------------------------------------------------------
+config:
+  # PostgreSQL connection string. Required.
+  # Example: postgres://multica:multica@postgres:5432/multica?sslmode=disable
+  databaseUrl: ""
+
+  # JWT signing secret. Must be changed for production.
+  jwtSecret: "change-me-in-production"
+
+  # Public URL of the frontend (used for CORS and redirects).
+  frontendOrigin: "http://localhost:3000"
+
+  # Public URL shown in CLI output / emails.
+  appUrl: "http://localhost:3000"
+
+  # "production" or "development".
+  # development enables the 888888 master login code — never use on public instances.
+  appEnv: production
+
+  # Additional CORS origins (comma-separated).
+  corsAllowedOrigins: ""
+
+  # Set to "false" to disable new user signups.
+  allowSignup: "true"
+
+  # Optional: restrict signups to these email domains (comma-separated).
+  allowedEmailDomains: ""
+
+  # Optional: restrict signups to these exact emails (comma-separated).
+  allowedEmails: ""
+
+  # Optional: cookie domain for multi-subdomain setups.
+  # Leave empty for single-host deployments.
+  cookieDomain: ""
+
+  # --- Email (Resend) ---
+  resendApiKey: ""
+  resendFromEmail: "noreply@multica.ai"
+
+  # --- Google OAuth ---
+  googleClientId: ""
+  googleClientSecret: ""
+  googleRedirectUri: ""
+
+  # --- S3 / CloudFront (optional file uploads) ---
+  s3Bucket: ""
+  s3Region: "us-west-2"
+  cloudfrontDomain: ""
+  cloudfrontKeyPairId: ""
+  cloudfrontPrivateKey: ""
+
+# ---------------------------------------------------------------------------
+# Secret
+# ---------------------------------------------------------------------------
+secret:
+  # Create a Kubernetes Secret with sensitive config values.
+  create: true
+  # Reference an existing Secret instead of creating one.
+  existingSecret: ""
+  # Key names inside the Secret (customise when using an existing Secret).
+  keys:
+    databaseUrl: DATABASE_URL
+    jwtSecret: JWT_SECRET
+    resendApiKey: RESEND_API_KEY
+    googleClientSecret: GOOGLE_CLIENT_SECRET
+    cloudfrontPrivateKey: CLOUDFRONT_PRIVATE_KEY
+
+# ---------------------------------------------------------------------------
+# Persistence — backend file uploads
+# Only needed when S3 is not configured.
+# ---------------------------------------------------------------------------
+persistence:
+  enabled: true
+  existingClaim: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  storageClass: ""
+  annotations: {}
+
+# ---------------------------------------------------------------------------
+# Ingress
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: multica.local
+      paths:
+        - path: /
+          pathType: Prefix
+          # "frontend" or "backend" — which service this path routes to.
+          service: frontend
+  tls: []
+
+# ---------------------------------------------------------------------------
+# Gateway API HTTPRoute
+# ---------------------------------------------------------------------------
+httpRoute:
+  enabled: false
+  annotations: {}
+  parentRefs: []
+  hostnames: []
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      service: frontend
+      filters: []
+
+# ---------------------------------------------------------------------------
+# Health probes
+# ---------------------------------------------------------------------------
+probes:
+  backend:
+    liveness:
+      enabled: true
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      enabled: true
+      path: /health
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+  frontend:
+    liveness:
+      enabled: true
+      initialDelaySeconds: 10
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      enabled: true
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+# ---------------------------------------------------------------------------
+# Runners (daemons)
+# Each runner is a StatefulSet that runs `multica daemon start --foreground`.
+# It polls the backend for tasks and spawns agent CLIs as subprocesses.
+#
+# Prerequisites:
+#   1. A daemon auth token — obtain via Multica UI or API, store in a Secret.
+#   2. Agent CLI binaries (claude, codex, etc.) — the default backend image
+#      does NOT include them. Override runner image with one that does, or
+#      use initContainers to install them.
+#
+# Example runner entry:
+#   runners:
+#     claude:
+#       image:
+#         repository: my-registry/multica-runner-claude
+#         tag: latest
+#       auth:
+#         existingSecret: multica-runner-token
+#         key: token
+#       serverUrl: ws://backend:8080/ws
+#       env:
+#         - name: MULTICA_CLAUDE_MODEL
+#           value: "claude-sonnet-4-20250514"
+# ---------------------------------------------------------------------------
+runners: {}
+  # <name>:
+  #   replicas: 1
+  #
+  #   image:
+  #     repository: ghcr.io/multica-ai/multica-backend
+  #     pullPolicy: IfNotPresent
+  #     tag: ""
+  #
+  #   # Auth token Secret — the daemon needs a valid session token.
+  #   auth:
+  #     existingSecret: ""
+  #     key: token
+  #
+  #   # Backend WebSocket URL (defaults to cluster-internal backend service).
+  #   serverUrl: ""
+  #
+  #   # Workspace ID to attach to (empty = auto-discover all workspaces).
+  #   workspaceId: ""
+  #
+  #   # Human-readable name shown in the Multica UI.
+  #   deviceName: ""
+  #
+  #   # Task execution settings.
+  #   pollInterval: "3s"
+  #   heartbeatInterval: "15s"
+  #   agentTimeout: "2h"
+  #   maxConcurrentTasks: 20
+  #
+  #   # Persistent workspace storage.
+  #   persistence:
+  #     size: 20Gi
+  #     storageClass: ""
+  #
+  #   resources: {}
+  #   nodeSelector: {}
+  #   tolerations: []
+  #   affinity: {}
+  #   podAnnotations: {}
+  #   podLabels: {}
+  #
+  #   securityContext:
+  #     runAsNonRoot: true
+  #     runAsUser: 1000
+  #     runAsGroup: 1000
+  #
+  #   # Extra environment variables (agent paths, model overrides, etc.).
+  #   env: []
+  #
+  #   # Extra init containers (e.g. to install agent CLIs).
+  #   initContainers: []
+  #
+  #   # Extra volume mounts for the daemon container.
+  #   extraVolumeMounts: []
+  #
+  #   # Extra volumes.
+  #   extraVolumes: []
+
+# ---------------------------------------------------------------------------
+# Extra manifests
+# ---------------------------------------------------------------------------
+extraManifests: []

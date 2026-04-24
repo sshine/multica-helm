@@ -1,0 +1,20 @@
+apiVersion: v2
+name: multica
+description: Helm chart for deploying Multica on Kubernetes
+type: application
+version: 0.1.0
+appVersion: v0.2.15
+home: https://github.com/sshine/multica
+icon: https://multica.ai/favicon.ico
+sources:
+  - https://github.com/multica-ai/multica
+  - https://github.com/sshine/multica-helm
+keywords:
+  - multica
+  - ai
+  - kanban
+  - coding-agents
+  - task-management
+maintainers:
+  - name: Simon Shine
+    url: https://github.com/sshine/multica-helm
