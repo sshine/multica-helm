@@ -319,6 +319,17 @@ runners: {}
   #   # Extra environment variables (agent paths, model overrides, etc.).
   #   env: []
   #
+  #   # Files written into the daemon's $HOME (/home/multica) by the init
+  #   # container before the daemon starts. Use this for agent-specific config
+  #   # (e.g. ~/.pi/agent/models.json, ~/.codex/config.json) that would
+  #   # otherwise require rebuilding the runner image. Paths are relative to
+  #   # $HOME. Each file is written with 0600 permissions unless `mode` is set.
+  #   configFiles:
+  #     - path: .pi/agent/models.json
+  #       content: |
+  #         { "providers": { ... } }
+  #       # mode: 600
+  #
   #   # Extra init containers (e.g. to install agent CLIs).
   #   initContainers: []
   #

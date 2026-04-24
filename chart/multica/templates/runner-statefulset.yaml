@@ -49,14 +49,16 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        {{- if $runner.auth }}
-        # Write CLI config with auth token so the daemon can authenticate.
-        # The multica CLI reads ~/.multica/config.json for session credentials.
+        {{- if or $runner.auth $runner.configFiles }}
+        # Bootstrap per-runner files (auth token, agent configs) and fix
+        # ownership of the home/workspaces volumes so the daemon (UID 1000)
+        # can write to them.
         - name: init-auth
           image: busybox:1.37
           command: ["sh", "-c"]
           args:
             - |
+              {{- if $runner.auth }}
               mkdir -p /home/multica/.multica
               cat > /home/multica/.multica/config.json <<CONF
               {
@@ -65,37 +67,14 @@ spec:
               }
               CONF
               chmod 600 /home/multica/.multica/config.json
-              # Write pi agent models.json so it can find providers even if
-              # the built-in model catalog is incomplete.
-              mkdir -p /home/multica/.pi/agent
-              cat > /home/multica/.pi/agent/models.json <<'MODELS'
-              {
-                "providers": {
-                  "zai": {
-                    "baseUrl": "https://api.z.ai/api/coding/paas/v4",
-                    "apiKey": "ZAI_API_KEY",
-                    "api": "openai-completions",
-                    "compat": {
-                      "supportsDeveloperRole": false,
-                      "thinkingFormat": "zai",
-                      "zaiToolStream": true
-                    },
-                    "models": [
-                      {
-                        "id": "glm-5.1",
-                        "name": "Z.AI GLM 5.1",
-                        "reasoning": true,
-                        "input": ["text"],
-                        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-                        "contextWindow": 131072,
-                        "maxTokens": 16384
-                      }
-                    ]
-                  }
-                }
-              }
-              MODELS
-              chmod 600 /home/multica/.pi/agent/models.json
+              {{- end }}
+              {{- range $cf := $runner.configFiles | default list }}
+              mkdir -p "$(dirname /home/multica/{{ $cf.path }})"
+              cat > /home/multica/{{ $cf.path }} <<'CFGEOF'
+              {{- $cf.content | trimSuffix "\n" | nindent 14 }}
+              CFGEOF
+              chmod {{ $cf.mode | default 600 }} /home/multica/{{ $cf.path }}
+              {{- end }}
               chown -R 1000:1000 /home/multica
               chown -R 1000:1000 /workspaces
           volumeMounts:
@@ -103,9 +82,11 @@ spec:
               mountPath: /home/multica
             - name: workspaces
               mountPath: /workspaces
+            {{- if $runner.auth }}
             - name: auth-secret
               mountPath: /secrets/auth
               readOnly: true
+            {{- end }}
         {{- end }}
         {{- with $runner.initContainers }}
         {{- toYaml . | nindent 8 }}
