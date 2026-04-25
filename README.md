@@ -105,7 +105,41 @@ You'll need:
 
 This is a complete worked example. The runner uses [Pi](https://github.com/picohq/pi) as the agent CLI, talking to Z.AI's OpenAI-compatible endpoint.
 
-#### Step 1 — create the Secrets (plain Kubernetes)
+#### Step 1 — build a runner image
+
+The upstream `multica-backend` image ships the `multica` daemon but no agent CLIs. Layer the agent on top:
+
+```dockerfile
+# Dockerfile — illustrative; adapt the install step to whatever package
+# source the agent ships from.
+FROM ghcr.io/multica-ai/multica-backend:v0.2.15
+
+USER root
+
+# Install Node.js + the pi CLI. Replace this line for other agents
+# (claude-code, codex, …) — the rest of the image stays the same.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends nodejs npm ca-certificates git \
+ && npm install -g @picohq/pi \
+ && rm -rf /var/lib/apt/lists/*
+
+# Image-intrinsic env (paths that won't change per-deployment). Per-runner
+# values like API keys and model selection stay in the chart's values.env.
+ENV MULTICA_PI_PATH=/usr/bin/pi \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+
+USER 1000:1000
+```
+
+```bash
+docker build -t ghcr.io/your-org/multica-runner-pi:0.1.0 .
+docker push ghcr.io/your-org/multica-runner-pi:0.1.0
+```
+
+> If you'd rather build the image with Nix, see [`sshine/multica-runner`](https://git.shine.town/sshine/multica-runner/src/branch/main/nix/multica-runner.nix) for a working layered-image definition that pins the upstream digest and adds the pi CLI plus the usual dev tooling (git, git-lfs, ssh, curl, …).
+
+#### Step 2 — create the Secrets (plain Kubernetes)
 
 ```bash
 # The daemon auth token from the Multica UI:
@@ -117,7 +151,7 @@ kubectl create secret generic zai-api-token -n multica \
   --from-literal=api_token='<your-zai-key>'
 ```
 
-#### Step 2 — values
+#### Step 3 — values
 
 ```yaml
 # values.yaml
@@ -172,23 +206,17 @@ runners:
             }
           }
 
-    # Environment variables for the daemon container. Mix plain values and
-    # secret references freely — this is the standard PodSpec env shape.
+    # Per-runner env. Mix plain values and secret references freely — this
+    # is the standard PodSpec env shape. Image-intrinsic vars (paths, CA
+    # bundle) are baked into the Dockerfile above and don't repeat here.
     env:
       - name: ZAI_API_KEY
         valueFrom:
           secretKeyRef:
             name: zai-api-token
             key: api_token
-      - name: MULTICA_PI_PATH
-        value: /bin/pi
       - name: MULTICA_PI_MODEL
         value: zai/glm-5.1
-      # Help Node-based agents trust the system CA bundle:
-      - name: SSL_CERT_FILE
-        value: /etc/ssl/certs/ca-bundle.crt
-      - name: NODE_EXTRA_CA_CERTS
-        value: /etc/ssl/certs/ca-bundle.crt
 ```
 
 ```bash
@@ -196,7 +224,7 @@ helm upgrade --install multica oci://ghcr.io/sshine/charts/multica \
   --version 0.1.0 -n multica -f values.yaml
 ```
 
-#### Step 3 (alternative) — use Vault Secrets Operator
+#### Alternative: secrets via Vault Secrets Operator
 
 If you have [Vault Secrets Operator](https://github.com/hashicorp/vault-secrets-operator) installed, replace the `kubectl create secret` calls with `VaultStaticSecret` CRDs that sync from Vault into the same Kubernetes Secret names. The chart values don't change — it still reads from `multica-runner` / `zai-api-token`.
 
