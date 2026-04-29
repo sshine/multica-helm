@@ -43,10 +43,26 @@ backend:
       drop:
         - ALL
 
-  resources: {}
+  # Sensible defaults for a small/medium deployment. The backend is a Go
+  # service with a WebSocket hub — memory usage is light but grows with
+  # connected clients. Override (or set to {}) for tiny dev clusters.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
   nodeSelector: {}
   tolerations: []
   affinity: {}
+
+  # PodDisruptionBudget. Disabled by default. Only enable when running with
+  # replicaCount >= 2 — a PDB with minAvailable=1 and replicaCount=1 will
+  # block all voluntary disruptions (drains, node upgrades).
+  pdb:
+    enabled: false
+    minAvailable: 1
+    # maxUnavailable: 1   # set this OR minAvailable, not both
 
   # Extra environment variables for the backend container.
   extraEnv: []
@@ -86,12 +102,33 @@ frontend:
       drop:
         - ALL
 
-  resources: {}
+  # Sensible defaults for a small/medium deployment. The frontend is a
+  # Next.js standalone server; observed long-running memory growth means
+  # 256Mi is too tight (OOMKilled every few days). 512Mi is comfortable.
+  # Pair with NODE_OPTIONS=--max-old-space-size=400 (see extraEnv) so V8
+  # GCs aggressively before the cgroup kills the process.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
   nodeSelector: {}
   tolerations: []
   affinity: {}
 
+  # PodDisruptionBudget. Disabled by default. Only enable when running with
+  # replicaCount >= 2 — a PDB with minAvailable=1 and replicaCount=1 will
+  # block all voluntary disruptions (drains, node upgrades).
+  pdb:
+    enabled: false
+    minAvailable: 1
+    # maxUnavailable: 1   # set this OR minAvailable, not both
+
   # Extra environment variables for the frontend container.
+  # Recommended when running near the memory limit:
+  #   - name: NODE_OPTIONS
+  #     value: "--max-old-space-size=400"  # ~80% of the 512Mi limit
   extraEnv: []
   extraEnvFrom: []
 

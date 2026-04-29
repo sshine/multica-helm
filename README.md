@@ -37,6 +37,43 @@ All knobs live in [`charts/multica/values.yaml`](charts/multica/values.yaml). Th
 | `persistence.size` | `10Gi` | PVC for backend file uploads (skip if using S3) |
 | `ingress.enabled` | `false` | Plain Ingress |
 | `httpRoute.enabled` | `false` | Gateway API HTTPRoute |
+| `backend.resources` / `frontend.resources` | small/medium defaults (see below) | Set to `{}` for tiny dev clusters |
+| `backend.pdb.enabled` / `frontend.pdb.enabled` | `false` | PodDisruptionBudget — only enable with `replicaCount >= 2` |
+
+### Resources
+
+The chart ships sensible defaults instead of `resources: {}`:
+
+| Component | Requests | Limits |
+|---|---|---|
+| `backend`  (Go API + WebSocket hub) | `cpu: 100m`, `memory: 128Mi` | `memory: 512Mi` |
+| `frontend` (Next.js standalone)     | `cpu: 50m`,  `memory: 128Mi` | `memory: 512Mi` |
+| `runners.<name>` | unset (workload-specific) | unset |
+
+The frontend default of 512Mi is deliberate: 256Mi was empirically too tight — a long-running Next.js process slowly grew its heap and got OOMKilled by the kernel every 4–5 days. With a single replica behind an ingress this surfaces as a brief "no healthy upstream" outage during the restart window. If you observe similar growth, pair the limit with a Node heap cap so V8 GCs before the cgroup kills it:
+
+```yaml
+frontend:
+  extraEnv:
+    - name: NODE_OPTIONS
+      value: "--max-old-space-size=400"   # ~80% of the 512Mi limit
+```
+
+For tiny dev clusters (kind, k3d), override to `resources: {}` to drop the requests.
+
+### High availability
+
+For a setup that survives a single-pod OOM or a node drain without downtime, run the frontend with two replicas behind a PodDisruptionBudget:
+
+```yaml
+frontend:
+  replicaCount: 2
+  pdb:
+    enabled: true
+    minAvailable: 1
+```
+
+The same pattern applies to `backend.replicaCount` / `backend.pdb`. Don't enable a PDB with `replicaCount: 1` — `minAvailable: 1` would block all voluntary disruptions (drains, upgrades).
 
 ### Example: with Ingress
 
