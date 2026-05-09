@@ -45,6 +45,8 @@ spec:
               value: "0.0.0.0"
             - name: PORT
               value: "3000"
+            - name: NODE_OPTIONS
+              value: {{ .Values.frontend.nodeOptions | quote }}
             {{- with .Values.frontend.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -83,8 +85,12 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: nextjs-cache
+              mountPath: /app/apps/web/.next/cache
       volumes:
         - name: tmp
+          emptyDir: {}
+        - name: nextjs-cache
           emptyDir: {}
       {{- with .Values.frontend.nodeSelector }}
       nodeSelector:

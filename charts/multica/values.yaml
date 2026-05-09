@@ -103,16 +103,20 @@ frontend:
         - ALL
 
   # Sensible defaults for a small/medium deployment. The frontend is a
-  # Next.js standalone server; observed long-running memory growth means
-  # 256Mi is too tight (OOMKilled every few days). 512Mi is comfortable.
-  # Pair with NODE_OPTIONS=--max-old-space-size=400 (see extraEnv) so V8
-  # GCs aggressively before the cgroup kills the process.
+  # Next.js 16 standalone server; 512Mi is too tight for warm-up traffic
+  # (OOMKilled, exit 137). 1Gi is comfortable. NODE_OPTIONS below caps the
+  # V8 heap so GC runs aggressively before the cgroup kills the process.
   resources:
     requests:
       cpu: 50m
-      memory: 128Mi
+      memory: 256Mi
     limits:
-      memory: 512Mi
+      memory: 1Gi
+
+  # Node.js heap size cap. Set to ~80% of the memory limit so V8 GCs
+  # before the cgroup OOM-kills the process.
+  nodeOptions: "--max-old-space-size=800"
+
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -126,9 +130,8 @@ frontend:
     # maxUnavailable: 1   # set this OR minAvailable, not both
 
   # Extra environment variables for the frontend container.
-  # Recommended when running near the memory limit:
-  #   - name: NODE_OPTIONS
-  #     value: "--max-old-space-size=400"  # ~80% of the 512Mi limit
+  # NODE_OPTIONS is set by default via frontend.nodeOptions above; entries
+  # here can override it (last value wins for duplicate env names).
   extraEnv: []
   extraEnvFrom: []
 
