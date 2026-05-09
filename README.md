@@ -14,7 +14,7 @@ The chart is published as an OCI artifact at `ghcr.io/sshine/charts/multica`.
 
 ```bash
 helm install multica oci://ghcr.io/sshine/charts/multica \
-  --version 0.1.0 \
+  --version 0.2.29 \
   --namespace multica --create-namespace \
   --set config.databaseUrl='postgres://multica:multica@postgres:5432/multica?sslmode=disable' \
   --set config.jwtSecret="$(openssl rand -base64 32)"
@@ -47,16 +47,14 @@ The chart ships sensible defaults instead of `resources: {}`:
 | Component | Requests | Limits |
 |---|---|---|
 | `backend`  (Go API + WebSocket hub) | `cpu: 100m`, `memory: 128Mi` | `memory: 512Mi` |
-| `frontend` (Next.js standalone)     | `cpu: 50m`,  `memory: 128Mi` | `memory: 512Mi` |
+| `frontend` (Next.js standalone)     | `cpu: 50m`,  `memory: 256Mi` | `memory: 1Gi`   |
 | `runners.<name>` | unset (workload-specific) | unset |
 
-The frontend default of 512Mi is deliberate: 256Mi was empirically too tight — a long-running Next.js process slowly grew its heap and got OOMKilled by the kernel every 4–5 days. With a single replica behind an ingress this surfaces as a brief "no healthy upstream" outage during the restart window. If you observe similar growth, pair the limit with a Node heap cap so V8 GCs before the cgroup kills it:
+The frontend default of 1Gi is deliberate: 512Mi was empirically too tight for Next.js 16 — pods OOMKilled (exit 137) shortly after starting to handle traffic. The chart also sets `NODE_OPTIONS=--max-old-space-size=800` by default (`frontend.nodeOptions`) so V8 GCs before the cgroup kills the process. To use a different cap, override:
 
 ```yaml
 frontend:
-  extraEnv:
-    - name: NODE_OPTIONS
-      value: "--max-old-space-size=400"   # ~80% of the 512Mi limit
+  nodeOptions: "--max-old-space-size=600"   # ~80% of a custom limit
 ```
 
 For tiny dev clusters (kind, k3d), override to `resources: {}` to drop the requests.
@@ -258,7 +256,7 @@ runners:
 
 ```bash
 helm upgrade --install multica oci://ghcr.io/sshine/charts/multica \
-  --version 0.1.0 -n multica -f values.yaml
+  --version 0.2.29 -n multica -f values.yaml
 ```
 
 #### Alternative: secrets via Vault Secrets Operator
