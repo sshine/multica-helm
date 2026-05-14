@@ -219,6 +219,12 @@ persistence:
   size: 10Gi
   storageClass: ""
   annotations: {}
+  # Extra labels merged onto the PVC (in addition to the chart's standard
+  # labels). Useful for opting the volume into storage-system features such
+  # as Longhorn recurring-job groups, e.g.:
+  #   labels:
+  #     recurring-job-group.longhorn.io/backup: enabled
+  labels: {}
 
 # ---------------------------------------------------------------------------
 # Ingress
